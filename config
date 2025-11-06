@@ -1,0 +1,149 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+配置文件管理模块
+支持从环境变量和配置文件读取参数
+"""
+
+import os
+import json
+from typing import Dict, Any
+
+
+class Config:
+    """配置管理类"""
+    
+    def __init__(self, config_file: str = "config.json"):
+        self.config_file = config_file
+        self.config = self.load_config()
+        
+    def load_config(self) -> Dict[str, Any]:
+        """加载配置文件"""
+        default_config = {
+            "api": {
+                "provider": "aqicn",  # aqicn, qweather, etc.
+                "base_url": "https://api.example.com",
+                "timeout": 10,
+                "retry_times": 3,
+                "rate_limit": 60  # 每分钟请求限制
+            },
+            "database": {
+                "path": "air_quality.db",
+                "backup_enabled": True,
+                "backup_interval_hours": 24,
+                "max_records": 100000
+            },
+            "monitoring": {
+                "city": "北京",
+                "interval_hours": 1,
+                "enabled": True,
+                "retry_failed": True,
+                "max_retries": 3
+            },
+            "logging": {
+                "level": "INFO",
+                "file": "air_quality.log",
+                "max_size_mb": 10,
+                "backup_count": 5
+            },
+            "notification": {
+                "enabled": False,
+                "aqi_threshold": 150,
+                "webhook_url": None,
+                "email": None
+            }
+        }
+        
+        # 首先尝试从环境变量读取
+        config = self._load_from_env(default_config)
+        
+        # 然后从配置文件覆盖
+        if os.path.exists(self.config_file):
+            try:
+                with open(self.config_file, 'r', encoding='utf-8') as f:
+                    file_config = json.load(f)
+                config = self._merge_config(config, file_config)
+            except Exception as e:
+                print(f"配置文件加载失败: {e}，使用默认配置")
+        
+        return config
+    
+    def _load_from_env(self, default_config: Dict) -> Dict:
+        """从环境变量加载配置"""
+        config = default_config.copy()
+        
+        # API配置
+        if os.getenv('AQ_API_KEY'):
+            config['api']['key'] = os.getenv('AQ_API_KEY')
+        if os.getenv('AQ_API_PROVIDER'):
+            config['api']['provider'] = os.getenv('AQ_API_PROVIDER')
+        if os.getenv('AQ_API_BASE_URL'):
+            config['api']['base_url'] = os.getenv('AQ_API_BASE_URL')
+        
+        # 数据库配置
+        if os.getenv('AQ_DB_PATH'):
+            config['database']['path'] = os.getenv('AQ_DB_PATH')
+        
+        # 监控配置
+        if os.getenv('AQ_CITY'):
+            config['monitoring']['city'] = os.getenv('AQ_CITY')
+        if os.getenv('AQ_INTERVAL'):
+            config['monitoring']['interval_hours'] = int(os.getenv('AQ_INTERVAL'))
+        
+        # 日志配置
+        if os.getenv('AQ_LOG_LEVEL'):
+            config['logging']['level'] = os.getenv('AQ_LOG_LEVEL')
+        
+        return config
+    
+    def _merge_config(self, default: Dict, override: Dict) -> Dict:
+        """合并配置字典"""
+        merged = default.copy()
+        for key, value in override.items():
+            if key in merged and isinstance(merged[key], dict) and isinstance(value, dict):
+                merged[key] = self._merge_config(merged[key], value)
+            else:
+                merged[key] = value
+        return merged
+    
+    def get(self, key: str, default=None):
+        """获取配置值"""
+        keys = key.split('.')
+        value = self.config
+        
+        for k in keys:
+            if isinstance(value, dict) and k in value:
+                value = value[k]
+            else:
+                return default
+        
+        return value
+    
+    def set(self, key: str, value: Any):
+        """设置配置值"""
+        keys = key.split('.')
+        config = self.config
+        
+        for k in keys[:-1]:
+            if k not in config:
+                config[k] = {}
+            config = config[k]
+        
+        config[keys[-1]] = value
+    
+    def save(self):
+        """保存配置到文件"""
+        try:
+            with open(self.config_file, 'w', encoding='utf-8') as f:
+                json.dump(self.config, f, ensure_ascii=False, indent=2)
+        except Exception as e:
+            print(f"配置文件保存失败: {e}")
+
+
+# 创建全局配置实例
+config = Config()
+
+
+def get_config() -> Config:
+    """获取配置实例"""
+    return config
