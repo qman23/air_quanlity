@@ -219,13 +219,6 @@ python main.py \
 - **免费额度**: 每日1000次请求
 - **特点**: 全球覆盖，数据质量高
 
-## 数据查询示例
-
-### 使用db_viewer模块
-```bash
-python db_viewer/db_viewer.py --query --hours 24
-```
-
 ### 直接SQL查询
 ```sql
 -- 查看最近24小时数据
