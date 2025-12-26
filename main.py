@@ -37,7 +37,7 @@ class DataValidationError(Exception):
 class AirQualityMonitorEnhanced:
     """空气质量监控器（增强版）"""
     
-    def __init__(self, db_path: str = "air_quality.db", api_key: str = None, city: str = "北京"):
+    def __init__(self, db_path: str = "air_quality.db", api_key: str = None, city: str = "北京", use_city_db: bool = True):
         """
         初始化空气质量监控器
         
@@ -45,10 +45,24 @@ class AirQualityMonitorEnhanced:
             db_path: SQLite数据库文件路径
             api_key: 空气质量API密钥
             city: 监控的城市名称
+            use_city_db: 是否使用按城市分数据库的存储方式
         """
-        self.db_path = db_path
         self.api_key = api_key
         self.city = city
+        self.use_city_db = use_city_db
+        
+        # 根据配置决定数据库路径
+        if use_city_db:
+            # 按城市分开存放数据库
+            city_normalized = self.normalize_city_name(city)
+            self.db_path = f"data/air_quality_{city_normalized}.db"
+            
+            # 确保data目录存在
+            os.makedirs("data", exist_ok=True)
+        else:
+            # 使用统一的数据库文件
+            self.db_path = db_path
+            
         self.setup_logging()
 
         # 数据库操作统计
@@ -67,6 +81,25 @@ class AirQualityMonitorEnhanced:
             self.setup_database()
         else:
             self.logger.info(f"数据库文件已存在: {self.db_path}")
+            
+    def normalize_city_name(self, city: str) -> str:
+        """
+        标准化城市名称，用于生成数据库文件名
+        
+        Args:
+            city: 城市名称
+            
+        Returns:
+            标准化后的城市名称（适合用作文件名）
+        """
+        # 移除空格和特殊字符，转换为小写
+        import re
+        # 移除括号及其内容
+        city_clean = re.sub(r'\([^)]*\)', '', city).strip()
+        # 替换空格和特殊字符为下划线
+        city_normalized = re.sub(r'[^\w\u4e00-\u9fff]', '_', city_clean)
+        # 转换为小写
+        return city_normalized.lower()
             
     def setup_logging(self):
         """设置日志记录"""
@@ -554,12 +587,16 @@ def load_config():
     # 日志级别 - 从环境变量AQ_LOG_LEVEL获取，默认为INFO
     log_level = os.getenv('AQ_LOG_LEVEL', 'INFO')
     
+    # 是否使用按城市分数据库 - 从环境变量AQ_USE_CITY_DB获取，默认为True
+    use_city_db = os.getenv('AQ_USE_CITY_DB', 'true').lower() == 'true'
+    
     return {
         'api_key': api_key,
         'db_path': db_path,
         'city': city,
         'interval': interval,
-        'log_level': log_level
+        'log_level': log_level,
+        'use_city_db': use_city_db
     }
 
 
@@ -578,6 +615,10 @@ def main():
     parser.add_argument('--interval', type=int, default=config['interval'], help='监控间隔（小时）')
     parser.add_argument('--mode', choices=['monitor', 'once', 'test'], 
                        default='test', help='运行模式')
+    parser.add_argument('--use-city-db', action='store_true', default=config['use_city_db'], 
+                       help='是否使用按城市分数据库的存储方式')
+    parser.add_argument('--no-use-city-db', dest='use_city_db', action='store_false',
+                       help='不使用按城市分数据库的存储方式（使用统一数据库）')
     
     args = parser.parse_args()
     
@@ -586,7 +627,8 @@ def main():
         monitor = AirQualityMonitorEnhanced(
             db_path=args.db_path,
             api_key=args.api_key,
-            city=args.city
+            city=args.city,
+            use_city_db=args.use_city_db
         )
         
         if args.mode == 'test':
